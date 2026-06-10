@@ -6,7 +6,7 @@ Split group expenses and settle up with the fewest payments. Create a group, add
 
 Built on a real backend: Supabase Postgres with email magic-link auth and Row-Level Security, so each user only ever sees their own groups.
 
-> Live demo: https://splitwisely.vercel.app
+> Live demo: https://splitwisely-navy.vercel.app
 
 ## Features
 

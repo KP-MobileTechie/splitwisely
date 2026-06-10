@@ -54,8 +54,13 @@ alter table group_members enable row level security;
 alter table expenses enable row level security;
 alter table expense_splits enable row level security;
 
--- A helper: does the current user own this group?
-create or replace function owns_group(gid uuid)
+-- A helper: does the current user own this group? Lives in a private schema
+-- (not exposed via the Data API) so it cannot be called over /rest/v1/rpc,
+-- while RLS policies can still use it. SECURITY DEFINER lets it read groups
+-- during policy evaluation without recursing through RLS.
+create schema if not exists private;
+
+create or replace function private.owns_group(gid uuid)
 returns boolean
 language sql
 security definer
@@ -67,10 +72,15 @@ as $$
   );
 $$;
 
+revoke all on function private.owns_group(uuid) from public;
+grant usage on schema private to authenticated;
+grant execute on function private.owns_group(uuid) to authenticated;
+
 -- groups: creator owns.
 drop policy if exists groups_owner on groups;
 create policy groups_owner on groups
   for all
+  to authenticated
   using (created_by = auth.uid())
   with check (created_by = auth.uid());
 
@@ -78,29 +88,32 @@ create policy groups_owner on groups
 drop policy if exists group_members_owner on group_members;
 create policy group_members_owner on group_members
   for all
-  using (owns_group(group_id))
-  with check (owns_group(group_id));
+  to authenticated
+  using (private.owns_group(group_id))
+  with check (private.owns_group(group_id));
 
 -- expenses: through the owning group.
 drop policy if exists expenses_owner on expenses;
 create policy expenses_owner on expenses
   for all
-  using (owns_group(group_id))
-  with check (owns_group(group_id));
+  to authenticated
+  using (private.owns_group(group_id))
+  with check (private.owns_group(group_id));
 
 -- expense_splits: through the expense's owning group.
 drop policy if exists expense_splits_owner on expense_splits;
 create policy expense_splits_owner on expense_splits
   for all
+  to authenticated
   using (
     exists (
       select 1 from expenses e
-      where e.id = expense_id and owns_group(e.group_id)
+      where e.id = expense_id and private.owns_group(e.group_id)
     )
   )
   with check (
     exists (
       select 1 from expenses e
-      where e.id = expense_id and owns_group(e.group_id)
+      where e.id = expense_id and private.owns_group(e.group_id)
     )
   );

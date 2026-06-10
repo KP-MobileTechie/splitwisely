@@ -12,6 +12,18 @@ export async function proxy(request: NextRequest) {
   // Without env there is no session to refresh; let the request through.
   if (!isSupabaseConfigured()) return response;
 
+  // Magic-link fallback: if Supabase redirects the auth code to any path other
+  // than the confirm route (e.g. the Site URL root "/?code=..."), forward it to
+  // /auth/confirm so the session is actually exchanged instead of being dropped.
+  const url = request.nextUrl;
+  const hasAuthParam =
+    url.searchParams.has("code") || url.searchParams.has("token_hash");
+  if (hasAuthParam && url.pathname !== "/auth/confirm") {
+    const confirmUrl = url.clone();
+    confirmUrl.pathname = "/auth/confirm";
+    return NextResponse.redirect(confirmUrl);
+  }
+
   const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     cookies: {
       getAll() {
